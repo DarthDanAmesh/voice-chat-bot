@@ -1,0 +1,13 @@
+You need to have npm installed
+$npm install -g http-server
+
+run backend 
+$python server.py
+
+run frontend (in another terminal)
+$http-server
+
+
+Windows may have some challenge running in vscode
+run in terminal:
+$Set-ExecutionPolicy Unrestricted -Scope CurrentUser
