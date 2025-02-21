@@ -30,228 +30,320 @@
         <div id="status"></div>
     </div>
     <script type="module">
-            // Check for Speech Synthesis support
+    // State Management
+const AppState = {
+  IDLE: 'idle',
+  LISTENING: 'listening',
+  PROCESSING: 'processing',
+  SPEAKING: 'speaking',
+  ERROR: 'error'
+};
+
+class SpeechInterface {
+  constructor() {
+    this.state = AppState.IDLE;
+    this.messages = [];
+    this.transcript = '';
+    this.setupSpeechRecognition();
+    this.setupSpeechSynthesis();
+    this.setupDOMElements();
+    this.setupEventListeners();
+  }
+
+  setupSpeechRecognition() {
     if (!("speechSynthesis" in window && "SpeechSynthesisUtterance" in window)) {
-        document.querySelector('.container').insertAdjacentHTML('afterbegin', 
-            '<div class="unsupported">Speech Synthesis not supported in this browser</div>'
-        );
+      this.handleError(new Error("Speech Synthesis not supported"));
+      return;
     }
 
-    // Speech Recognition Setup
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    this.recognition.continuous = true;
+    this.recognition.interimResults = true;
+    this.recognition.lang = 'en-US';
 
-    // Speech Synthesis Setup
-    const synth = window.speechSynthesis;
+    this.setupRecognitionHandlers();
+  }
 
-    // Available voices configuration
-    const availableVoices = [
-        { name: "Google Deutsch", lang: "de-DE" },
-        { name: "Google US English", lang: "en-US" },
-        { name: "Google UK English Female", lang: "en-GB" },
-        { name: "Google español", lang: "es-ES" },
-        { name: "Google français", lang: "fr-FR" },
-        { name: "Google 日本語", lang: "ja-JP" }
-    ];
+  setupSpeechSynthesis() {
+    this.synth = window.speechSynthesis;
+    this.availableVoices = [
+      { name: "Google UK English Female", lang: "en-GB", priority: 1 },
+      { name: "Google US English", lang: "en-US", priority: 2 },
+      { name: "Google Deutsch", lang: "de-DE", priority: 3 },
+      { name: "Google español", lang: "es-ES", priority: 4 },
+      { name: "Google français", lang: "fr-FR", priority: 5 },
+      { name: "Google 日本語", lang: "ja-JP", priority: 6 }
+    ].sort((a, b) => a.priority - b.priority);
 
-    // DOM Elements
-    const chatDiv = document.getElementById("chat");
-    const startBtn = document.getElementById("startBtn");
-    const stopBtn = document.getElementById("stopBtn");
-    const clearBtn = document.getElementById("clearBtn");
-    const statusDiv = document.getElementById("status");
-    const voiceSelect = document.getElementById("voice-select");
+    this.synth.onvoiceschanged = () => this.populateVoiceList();
+  }
 
-    let isListening = false;
-    let transcript = "";
-    let isProcessing = false;
-    const messages = [];
+  setupDOMElements() {
+    this.elements = {
+      chat: document.getElementById("chat"),
+      startBtn: document.getElementById("startBtn"),
+      stopBtn: document.getElementById("stopBtn"),
+      clearBtn: document.getElementById("clearBtn"),
+      status: document.getElementById("status"),
+      voiceSelect: document.getElementById("voice-select")
+    };
+  }
 
-    // Populate voice selection dropdown
-    function populateVoiceList() {
-        voiceSelect.innerHTML = ''; // Clear existing options
-        availableVoices.forEach((voice, i) => {
-            const option = document.createElement("option");
-            option.value = i;
-            option.textContent = `${voice.name} (${voice.lang})`;
-            voiceSelect.appendChild(option);
-            
-            // Set default to Google UK English Female
-            if (voice.lang === "en-GB") {
-                voiceSelect.value = i;
-            }
-        });
-    }
-
-    // Initialize voice list when voices are loaded
-    synth.onvoiceschanged = populateVoiceList;
-
-    // Initial population in case voices are already loaded
-    populateVoiceList();
-
-    // Event Listeners
-    startBtn.addEventListener("click", startListening);
-    stopBtn.addEventListener("click", stopListening);
-    clearBtn.addEventListener("click", clearChat);
-
-    // Start Listening Function
-    function startListening() {
-        if (!isListening && !isProcessing) {
-            try {
-                recognition.start();
-                isListening = true;
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                updateStatus("Listening...", "🎤");
-                addMessage("system", "Listening to your voice...");
-            } catch (error) {
-                handleError("Error starting speech recognition: " + error.message);
-            }
+  setupEventListeners() {
+    this.elements.startBtn.addEventListener("click", () => this.startListening());
+    this.elements.stopBtn.addEventListener("click", () => this.stopListening());
+    this.elements.clearBtn.addEventListener("click", () => this.clearChat());
+    
+    // Add keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        switch(e.key) {
+          case 's':
+            e.preventDefault();
+            this.state === AppState.LISTENING ? this.stopListening() : this.startListening();
+            break;
+          case 'l':
+            e.preventDefault();
+            this.clearChat();
+            break;
         }
-    }
+      }
+    });
+  }
 
-    // Stop Listening Function
-    function stopListening() {
-        if (isListening) {
-            recognition.stop();
-            isListening = false;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            updateStatus("Stopped listening", "⏹️");
-            addMessage("system", "Stopped listening.");
-        }
-    }
+  setupRecognitionHandlers() {
+    this.recognition.onresult = (event) => this.handleRecognitionResult(event);
+    this.recognition.onerror = (event) => this.handleError(event);
+    this.recognition.onend = () => this.handleRecognitionEnd();
+  }
 
-    // Clear Chat Function
-    function clearChat() {
-        if (confirm("Are you sure you want to clear the chat history?")) {
-            chatDiv.innerHTML = "";
-            messages.length = 0;
-            updateStatus("Chat cleared", "🗑️");
-        }
-    }
-
-    // Update Status Function
-    function updateStatus(message, icon = "") {
-        statusDiv.textContent = `${icon} ${message}`;
-    }
-
-    // Add Message Function
-    function addMessage(role, content) {
-        const messageDiv = document.createElement("div");
-        messageDiv.classList.add("message", role);
-        messageDiv.textContent = content;
-        chatDiv.appendChild(messageDiv);
-        chatDiv.scrollTop = chatDiv.scrollHeight;
-    }
-
-    // Handle Error Function
-    function handleError(error) {
-        console.error(error);
-        addMessage("system", `Error: ${error}`);
-        updateStatus("Error occurred", "❌");
-        stopListening();
-    }
-
-    // Speech Recognition Results Handler
-    recognition.onresult = (event) => {
-        let interimTranscript = "";
-        
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            const { transcript: segmentTranscript } = event.results[i][0];
-            if (event.results[i].isFinal) {
-                transcript += segmentTranscript + " ";
-                sendMessage(transcript.trim());
-                transcript = "";
-            } else {
-                interimTranscript += segmentTranscript;
-            }
-        }
-        
-        updateStatus(interimTranscript ? "Recognizing..." : "Listening...", "🎤");
+  async setState(newState, statusMessage = '') {
+    const stateConfig = {
+      [AppState.IDLE]: { icon: '✅', btnState: { start: false, stop: true } },
+      [AppState.LISTENING]: { icon: '🎤', btnState: { start: true, stop: false } },
+      [AppState.PROCESSING]: { icon: '⚙️', btnState: { start: true, stop: true } },
+      [AppState.SPEAKING]: { icon: '🔊', btnState: { start: true, stop: false } },
+      [AppState.ERROR]: { icon: '❌', btnState: { start: false, stop: true } }
     };
 
-    // Send Message Function
-    async function sendMessage(content) {
-        if (!content.trim() || isProcessing) return;
-        
-        isProcessing = true;
-        updateStatus("Processing...", "⚙️");
-        
-        const newMessage = { role: 'user', content };
-        messages.push(newMessage);
-        addMessage("user", content);
+    const config = stateConfig[newState];
+    if (!config) return;
 
-        try {
-            const response = await fetch('http://127.0.0.1:8080/api/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ messages, role: 'user' }),
-            });
+    this.state = newState;
+    this.elements.startBtn.disabled = config.btnState.start;
+    this.elements.stopBtn.disabled = config.btnState.stop;
+    this.updateStatus(statusMessage || newState, config.icon);
+  }
 
-            if (!response.ok) {
-                throw new Error(`Server responded with status: ${response.status}`);
-            }
+  updateStatus(message, icon = '') {
+    this.elements.status.textContent = `${icon} ${message}`;
+    // Add visual feedback
+    this.elements.status.className = `status ${this.state.toLowerCase()}`;
+  }
 
-            const data = await response.json();
-            const assistantMessage = { role: 'assistant', content: data.response };
-            messages.push(assistantMessage);
-            addMessage("assistant", data.response);
-            speak(data.response);
-            updateStatus("Ready", "✅");
-        } catch (error) {
-            handleError(`Failed to communicate with the server: ${error.message}`);
-        } finally {
-            isProcessing = false;
-        }
+  async startListening() {
+    if (this.state !== AppState.IDLE) return;
+
+    try {
+      await this.recognition.start();
+      await this.setState(AppState.LISTENING, 'Listening to your voice...');
+      this.addMessage("system", "Listening started");
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  async stopListening() {
+    if (this.state !== AppState.LISTENING) return;
+
+    try {
+      await this.recognition.stop();
+      await this.setState(AppState.IDLE, 'Stopped listening');
+      this.addMessage("system", "Listening stopped");
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  async clearChat() {
+    if (this.state === AppState.PROCESSING) return;
+
+    const confirmed = await this.showConfirmDialog("Are you sure you want to clear the chat history?");
+    if (confirmed) {
+      this.elements.chat.innerHTML = "";
+      this.messages = [];
+      await this.setState(AppState.IDLE, 'Chat cleared');
+    }
+  }
+
+  showConfirmDialog(message) {
+    return new Promise((resolve) => {
+      // Create custom modal instead of using confirm()
+      const modal = document.createElement('div');
+      modal.className = 'custom-modal';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <p>${message}</p>
+          <button class="confirm-btn">Yes</button>
+          <button class="cancel-btn">No</button>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      modal.querySelector('.confirm-btn').onclick = () => {
+        document.body.removeChild(modal);
+        resolve(true);
+      };
+
+      modal.querySelector('.cancel-btn').onclick = () => {
+        document.body.removeChild(modal);
+        resolve(false);
+      };
+    });
+  }
+
+  async handleRecognitionResult(event) {
+    let interimTranscript = '';
+    
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const { transcript: segmentTranscript } = event.results[i][0];
+      if (event.results[i].isFinal) {
+        this.transcript += segmentTranscript + " ";
+        await this.sendMessage(this.transcript.trim());
+        this.transcript = "";
+      } else {
+        interimTranscript += segmentTranscript;
+      }
+    }
+    
+    this.updateStatus(
+      interimTranscript ? `Recognizing: ${interimTranscript}` : "Listening...",
+      '🎤'
+    );
+  }
+
+  async sendMessage(content) {
+    if (!content.trim() || this.state === AppState.PROCESSING) return;
+
+    try {
+      await this.setState(AppState.PROCESSING, 'Processing your message...');
+      
+      const newMessage = { role: 'user', content };
+      this.messages.push(newMessage);
+      this.addMessage("user", content);
+
+      const response = await this.fetchResponse(newMessage);
+      const assistantMessage = { role: 'assistant', content: response.response };
+      this.messages.push(assistantMessage);
+      this.addMessage("assistant", response.response);
+      
+      await this.speak(response.response);
+      await this.setState(AppState.IDLE, 'Ready');
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  async fetchResponse(message) {
+    const response = await fetch('http://127.0.0.1:8080/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: this.messages,
+        role: 'user'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server responded with status: ${response.status}`);
     }
 
-    // Speak Text Function
-    function speak(text) {
-        if (synth.speaking) {
-            synth.cancel();
-        }
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        
-        // Set voice properties
-        const selectedVoice = availableVoices[voiceSelect.value];
-        const systemVoices = synth.getVoices();
-        utterance.voice = systemVoices.find(v => v.lang === selectedVoice.lang);
-        utterance.lang = selectedVoice.lang;
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        
-        // Event handlers
-        utterance.onstart = () => updateStatus("Speaking...", "🔊");
-        utterance.onend = () => updateStatus("Ready", "✅");
-        utterance.onerror = (event) => handleError(`Speech synthesis error: ${event.error}`);
-        
-        synth.speak(utterance);
+    return response.json();
+  }
+
+  async speak(text) {
+    if (this.synth.speaking) {
+      this.synth.cancel();
     }
 
-    // Error Handlers
-    recognition.onerror = (event) => {
-        handleError(`Speech recognition error: ${event.error}`);
-    };
+    return new Promise((resolve, reject) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      const selectedVoice = this.availableVoices[this.elements.voiceSelect.value];
+      const systemVoices = this.synth.getVoices();
+      
+      utterance.voice = systemVoices.find(v => v.lang === selectedVoice.lang);
+      utterance.lang = selectedVoice.lang;
+      utterance.rate = 1;
+      utterance.pitch = 1;
 
-    recognition.onend = () => {
-        if (isListening) {
-            try {
-                recognition.start();
-                updateStatus("Reconnected", "🔄");
-            } catch (error) {
-                handleError("Failed to restart speech recognition");
-            }
-        }
-    };
+      utterance.onstart = async () => await this.setState(AppState.SPEAKING, 'Speaking...');
+      utterance.onend = async () => {
+        await this.setState(AppState.IDLE, 'Ready');
+        resolve();
+      };
+      utterance.onerror = (event) => {
+        this.handleError(event);
+        reject(event);
+      };
 
-    // Initial status
-    updateStatus("Ready to start", "✅");
+      this.synth.speak(utterance);
+    });
+  }
+
+  async handleError(error) {
+    console.error(error);
+    await this.setState(AppState.ERROR, `Error: ${error.message}`);
+    this.addMessage("system", `Error: ${error.message}`);
+    
+    // Auto-recovery attempt after error
+    setTimeout(async () => {
+      if (this.state === AppState.ERROR) {
+        await this.setState(AppState.IDLE, 'Recovered from error');
+      }
+    }, 5000);
+  }
+
+  async handleRecognitionEnd() {
+    if (this.state === AppState.LISTENING) {
+      try {
+        await this.recognition.start();
+        this.updateStatus("Reconnected", "🔄");
+      } catch (error) {
+        this.handleError(error);
+      }
+    }
+  }
+
+  addMessage(role, content) {
+    const messageDiv = document.createElement("div");
+    messageDiv.classList.add("message", role);
+    messageDiv.textContent = content;
+    
+    // Add animation class
+    messageDiv.classList.add('message-fade-in');
+    
+    this.elements.chat.appendChild(messageDiv);
+    this.elements.chat.scrollTop = this.elements.chat.scrollHeight;
+  }
+
+  populateVoiceList() {
+    this.elements.voiceSelect.innerHTML = '';
+    this.availableVoices.forEach((voice, i) => {
+      const option = document.createElement("option");
+      option.value = i;
+      option.textContent = `${voice.name} (${voice.lang})`;
+      this.elements.voiceSelect.appendChild(option);
+      
+      if (voice.lang === "en-GB") {
+        this.elements.voiceSelect.value = i;
+      }
+    });
+  }
+}
+
+// Initialize the application
+const speechInterface = new SpeechInterface();
     </script>
 </body>
 </html>
