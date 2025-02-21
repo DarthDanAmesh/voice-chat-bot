@@ -11,3 +11,14 @@ $http-server
 Windows may have some challenge running in vscode
 run in terminal:
 $Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+
+
+What to implement:
+Summary of Fixes
+1. Simplify and Shorten Responses: Avoid verbosity and repetition.
+2. Maintain Context: Use conversation history to provide relevant answers.
+3. Ensure Complete Responses: Avoid truncation and incomplete sentences.
+4. Stay On Topic: Use topic detection to filter irrelevant information.
+5. Handle Errors Gracefully: Provide fallback responses and log errors.
+6. Fix Speech Synthesis Issues: Implement a queue system for TTS.
+7. Personalize Responses: Use dynamic phrasing and user context.
