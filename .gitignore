@@ -1,0 +1,10 @@
+.env
+# For local development:
+TTS_WORKERS=2                    # Fewer workers to save resources
+TTS_TIMEOUT=60.0                 # Longer timeout for debugging
+MAX_CONCURRENT_TTS=5             # Fewer concurrent tasks
+TTS_OUTPUT_DIR=./cache/tts       # Local cache directory
+OLLAMA_MODEL=smollm:135m         # Lightweight model for speed
+LOG_LEVEL=DEBUG                  # Verbose logging
+ENVIRONMENT=development          # Development environment
+DEBUG=true                       # Enable debug mode

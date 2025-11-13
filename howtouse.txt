@@ -4,6 +4,8 @@ $npm install -g http-server
 run backend 
 $python server.py
 
+install dependencies: pip install "fastapi[standard]"
+
 run frontend (in another terminal)
 $http-server
 
@@ -13,12 +15,21 @@ run in terminal:
 $Set-ExecutionPolicy Unrestricted -Scope CurrentUser
 
 
+---
+DEBUG=false (env for prod)
+
+
 What to implement:
 Summary of Fixes
+Finished (not tested 13.11.2025)
 1. Simplify and Shorten Responses: Avoid verbosity and repetition.
 2. Maintain Context: Use conversation history to provide relevant answers.
-3. Ensure Complete Responses: Avoid truncation and incomplete sentences.
-4. Stay On Topic: Use topic detection to filter irrelevant information.
+3. Stay On Topic: Use topic detection to filter irrelevant information.
+4. Fix Speech Synthesis Issues: Implement a queue system for TTS.
+---
+What to implement:
+later (maybe later 13.11.2025):
 5. Handle Errors Gracefully: Provide fallback responses and log errors.
-6. Fix Speech Synthesis Issues: Implement a queue system for TTS.
+6. persist job metadata (SQLite) so that TTS jobs survive server restarts
 7. Personalize Responses: Use dynamic phrasing and user context.
+3. Ensure Complete Responses: Avoid truncation and incomplete sentences.
